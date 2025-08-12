@@ -1,0 +1,35 @@
+# syntax=docker/dockerfile:1
+
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Zaman dilimini ayarla (Europe/Istanbul)
+ENV TZ=Europe/Istanbul
+RUN apt-get update && apt-get install -y tzdata \
+    && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime \
+    && echo $TZ > /etc/timezone \
+    && apt-get install -y gcc libpq-dev \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Bağımlılıkları yükle
+COPY requirements.txt .
+RUN --mount=type=cache,target=/root/.cache/pip pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
+
+# Proje dosyalarını kopyala
+COPY . .
+
+# Statik dosyaları toplayın
+RUN python manage.py collectstatic --noinput --settings=core.settings.prod
+
+# Kullanıcı oluştur ve geçiş yap
+RUN useradd -m myuser
+USER myuser
+
+# Ortam değişkenlerini ayarla
+ENV DJANGO_SETTINGS_MODULE=core.settings.prod
+ENV PORT=10000
+
+# Gunicorn ile uygulamayı başlat
+CMD ["gunicorn", "--bind", "0.0.0.0:10000", "core.wsgi:application", "--workers", "4", "--timeout", "480"]

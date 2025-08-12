@@ -1,0 +1,31 @@
+# syntax=docker/dockerfile:1
+
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Zaman dilimini ayarla (Europe/Istanbul)
+ENV TZ=Europe/Istanbul
+RUN apt-get update && apt-get install -y tzdata \
+    && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime \
+    && echo $TZ > /etc/timezone \
+    && apt-get install -y gcc libpq-dev \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Bağımlılıkları yükle
+COPY requirements.txt .
+RUN --mount=type=cache,target=/root/.cache/pip pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
+
+# Proje dosyalarını kopyala
+COPY . .
+
+# Kullanıcı oluştur ve geçiş yap
+RUN useradd -m myuser
+USER myuser
+
+# Ortam değişkenlerini ayarla
+ENV DJANGO_SETTINGS_MODULE=core.settings.prod
+
+# Celery worker'ı başlat
+CMD ["sh", "-c", "celery -A core.celery.celery worker --loglevel=info --concurrency=4 || echo 'Celery failed to start with exit code: $?' && sleep infinity"]
